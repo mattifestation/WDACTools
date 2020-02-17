@@ -16,7 +16,7 @@ The feature of WDAC that motivated me to develop this module was, beginning in W
 2. As rich as the logging is, it remains difficult to contextualize what all fields mean across many related events.
 3. The existing WDAC cmdlets available in the [ConfigCI PowerShell module](https://docs.microsoft.com/en-us/powershell/module/configci/?view=win10-ps) remain difficult to work with and do not output relevant objects that would enable tests to be written. Additionally, there is no cmdlet available to recover an XML policy from a binary .p7b/.cip policy.
 
-This module aims to address all of the above problems. While the auditing functionality of this module facilitates building code integrity policies, this module does not aim to automate application control policy configuration methodology. Use of this module assumes you are already comfortable building WDAC code integrity policies.
+This module aims to address all of the above problems. While the auditing functionality of this module facilitates building code integrity policies, this module does not aim to automate application control policy configuration methodology. **Use of this module assumes you are already comfortable building WDAC code integrity policies.**
 
 # Available Module Functions
 
@@ -79,7 +79,7 @@ Supports: `Auditing`
 
 ## `BasePolicies` Directory
 
-These are base policies that should rarely change with the exception of relevant policy rule modification (e.g. switching from audit to enforcement mode) and the occasional updating of blacklist rules in MicrosoftRecommendedBlockRules.xml. Intuitively, deny rules would live as supplemental rules but [deny rules are not honored in supplemental rules](https://web.archive.org/web/20190904022759/https://www.microsoft.com/security/blog/2019/07/01/delivering-major-enhancements-in-windows-defender-application-control-with-the-windows-10-may-2019-update/).
+These are base policies that should rarely change with the exception of relevant policy rule modification (e.g. switching from audit to enforcement mode) and the occasional updating of deny rules in MicrosoftRecommendedBlockRules.xml. Intuitively, deny rules would live as supplemental rules but [deny rules are not honored in supplemental rules](https://web.archive.org/web/20190904022759/https://www.microsoft.com/security/blog/2019/07/01/delivering-major-enhancements-in-windows-defender-application-control-with-the-windows-10-may-2019-update/).
 
 ## `SupplementalPolicies` Directory
 
@@ -103,7 +103,7 @@ As the `WDACTools` module was designed to facilitate consistency across all of y
 
 `WDACTools` is designed to permit supplying policy rule options via code so that consistency is ensured and so that generated policies can be easily tested against expected policy rule options.
 
-2. Policy settings Name and ID fields should be named `REPLACEME`. Doing so, allows you to specify policy names via code. Invoke-WDACCodeIntegrityPolicyBuild populates each policy ID with the build date (format: `MM_DD_YYYY`) as a way to simplify auditing.
+2. Policy settings Name and ID fields should be named `REPLACEME`. Doing so, allows you to specify policy names via code. `Invoke-WDACCodeIntegrityPolicyBuild` populates each policy ID with the build date (format: `MM_DD_YYYY`) as a way to simplify auditing.
 
 ```xml
 <Settings>
@@ -122,4 +122,4 @@ As the `WDACTools` module was designed to facilitate consistency across all of y
 
 # Generated Build Artifacts
 
-When policies are built with Invoke-WDACCodeIntegrityPolicyBuild, all generated XML and binary policies are saved to the `BuildArtifacts` directory. Invoke-WDACCodeIntegrityPolicyBuild supports an optional `-ArtifactPath` parameter though that allows you to specify an alternate build artifact path.
+When policies are built with `Invoke-WDACCodeIntegrityPolicyBuild`, all generated XML and binary policies are saved to the `BuildArtifacts` directory. `Invoke-WDACCodeIntegrityPolicyBuild` supports an optional `-ArtifactPath` parameter though that allows you to specify an alternate build artifact path.
