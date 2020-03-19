@@ -23,7 +23,7 @@ $SupplementalPolicyConfigurations = @(
 )
 
 # The following configuration implies that the "AppSpecificPolicies" directory is populated with policy XML files that are to be merged.
-$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
+$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -BasePolicyToSupplement 'BaseUserModeRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
 
 $CodeIntegrityPoliciesArgs = @{
     CommonBasePolicyRuleOptions     = $CommonBasePolicyRuleOptions

@@ -1,3 +1,4 @@
 *.cip
 *.p7b
 *.xml
+!AppSpecificPolicyTemplate.xml

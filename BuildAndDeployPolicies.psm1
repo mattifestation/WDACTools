@@ -103,6 +103,10 @@ Specifies the name of the policy. Upon deployment of your policy, this policy na
 
 Specifies the policy rule options that you want to supply to the specified policy. This parameter supports tab-completion.
 
+.PARAMETER BasePolicyToSupplement
+
+Specifies the base policy that the merged, application-specific policy is a supplement to. This parameter is mandatory when -MergedPolicy is specified.
+
 .EXAMPLE
 
 $BaseDriverPolicy = New-WDACPolicyConfiguration -BasePolicy -FileName 'BaseDriverPolicy.xml' -PolicyName 'BaseDriverRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
@@ -117,7 +121,7 @@ Specifies configuration options for a supplemental policy. The object output wou
 
 .EXAMPLE
 
-$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
+$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -BasePolicyToSupplement 'BaseUserModeRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
 
 Specifies configuration options for a merged supplemental policy (i.e. the policies that reside in the "AppSpecificPolicies" directory). The object output would then be supplied to the -MergedPolicyConfiguration parameter in Invoke-WDACCodeIntegrityPolicyBuild.
 #>
@@ -135,6 +139,11 @@ Specifies configuration options for a merged supplemental policy (i.e. the polic
         [Parameter(Mandatory, ParameterSetName = 'Merged')]
         [Switch]
         $MergedPolicy,
+
+        [Parameter(Mandatory, ParameterSetName = 'Merged')]
+        [String]
+        [ValidateNotNullOrEmpty()]
+        $BasePolicyToSupplement,
 
         [Parameter(Mandatory, ParameterSetName = 'Base')]
         [Parameter(Mandatory, ParameterSetName = 'Supplemental')]
@@ -173,6 +182,7 @@ Specifies configuration options for a merged supplemental policy (i.e. the polic
             PSTypeName        = 'WDACMergedPolicyConfiguration'
             PolicyName        = $PolicyName
             PolicyRuleOptions = $PolicyRuleOptions
+            BasePolicyToSupplement = $BasePolicyToSupplement
         }
     }
 
@@ -241,7 +251,7 @@ $SupplementalPolicyConfigurations = @(
     (New-WDACPolicyConfiguration -SupplementalPolicy -FileName 'MicrosoftSurfaceDriverPolicy.xml' -PolicyName '3rdPartyDriverRuleset' -PolicyRuleOptions 'Enabled:Audit Mode')
 )
 
-$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
+$MergedPolicyConfiguration = New-WDACPolicyConfiguration -MergedPolicy -PolicyName 'Merged3rdPartySoftwareRuleset' -BasePolicyToSupplement 'BaseUserModeRuleset' -PolicyRuleOptions 'Enabled:Audit Mode'
 
 $CodeIntegrityPoliciesArgs = @{
     CommonBasePolicyRuleOptions     = $CommonBasePolicyRuleOptions
@@ -267,12 +277,10 @@ This code specifies several policy configurations, converts them to binary form,
         [PSObject[]]
         $BasePolicyConfiguration,
 
-        [Parameter()]
         [PSTypeName('WDACSupplementalPolicyConfiguration')]
         [PSObject[]]
         $SupplementalPolicyConfiguration,
 
-        [Parameter()]
         [PSTypeName('WDACMergedPolicyConfiguration')]
         [PSObject]
         $MergedPolicyConfiguration,
@@ -302,7 +310,7 @@ This code specifies several policy configurations, converts them to binary form,
     }
 
     # Configure and build base policies
-    foreach ($BaseConfig in $BasePolicyConfiguration) {
+    $BasePolicies = foreach ($BaseConfig in $BasePolicyConfiguration) {
         $BasePolicyPath = "$PSScriptRoot\BasePolicies\$($BaseConfig.FileName)"
 
         # Each base template policy will be copied to this location prior to configuration.
@@ -353,7 +361,7 @@ This code specifies several policy configurations, converts them to binary form,
     # Configure and build supplemental policies
     if ($SupplementalPolicyConfiguration)
     {
-        foreach ($SupplementalConfig in $SupplementalPolicyConfiguration) {
+        $SupplementalPolicies = foreach ($SupplementalConfig in $SupplementalPolicyConfiguration) {
             $SupplementalPolicyPath = "$PSScriptRoot\SupplementalPolicies\$($SupplementalConfig.FileName)"
 
             # Each base template policy will be copied to this location prior to configuration.
@@ -406,10 +414,26 @@ This code specifies several policy configurations, converts them to binary form,
 
     # Build the app-specific policy
     if ($MergedPolicyConfiguration) {
+        if (-not ($BasePolicies | Where-Object { $_.PolicyInfoName -eq $MergedPolicyConfiguration.BasePolicyToSupplement })) {
+            Write-Error "The merged, application-specific supplemental policy is expected to supplement the following base policy that was not supplied: $($MergedPolicyConfiguration.BasePolicyToSupplement)"
+            return
+        }
+
+        $BasePolicyID = $BasePolicies | Where-Object { $_.PolicyInfoName -eq $MergedPolicyConfiguration.BasePolicyToSupplement } | Select-Object -ExpandProperty BasePolicyId
+
+        $CopiedAppTemplateDestination = "$ArtifactBasePath\AppSpecificPolicyTemplate.xml"
+
+        # Copy the application-specific template policy to the artifacts directory.
+        # This is done because the BasePolicyID element is going to be updated in the XML.
+        Copy-Item -Path "$PSScriptRoot\AppSpecificPolicies\AppSpecificPolicyTemplate.xml" -Destination $CopiedAppTemplateDestination -ErrorAction Stop
+
+        # Assign the application-specific supplemental policy base policy ID to the base policy name specified.
+        Set-CIPolicyIdInfo -FilePath $CopiedAppTemplateDestination -SupplementsBasePolicyID $BasePolicyID
+
         # AppSpecificPolicyTemplate.xml is used for maintaining file rule options.
         # Note: AppSpecificPolicyTemplate.xml must be the first policy file specified as this is what Merge-CIPolicy takes policy options from.
-        [String[]] $AppSpecificPolicyFiles = "$PSScriptRoot\SupplementalPolicies\AppSpecificPolicyTemplate.xml"
-        [String[]] $AppSpecificPolicyFiles += Get-ChildItem .\AppSpecificPolicies\ | Select-Object -ExpandProperty FullName
+        [String[]] $AppSpecificPolicyFiles = $CopiedAppTemplateDestination
+        [String[]] $AppSpecificPolicyFiles += Get-ChildItem "$PSScriptRoot\AppSpecificPolicies\*.xml" -Exclude 'AppSpecificPolicyTemplate.xml' | Select-Object -ExpandProperty FullName
 
         $MergedPolicyPath = "$ArtifactBasePath\MergedPolicy.xml"
 
@@ -454,9 +478,13 @@ This code specifies several policy configurations, converts them to binary form,
                 PolicyInfoID = ($BuiltPolicyXml.SiPolicy.Settings.Setting | Where-Object { $_.ValueName -eq 'Id' } | Select-Object -ExpandProperty Value | Select-Object -ExpandProperty String)
             }
 
-            New-Object -TypeName PSObject -Property $PolicyProperties
+            $MergedPolicy = New-Object -TypeName PSObject -Property $PolicyProperties
         }
     }
+
+    if ($BasePolicies) { $BasePolicies }
+    if ($SupplementalPolicies) { $SupplementalPolicies }
+    if ($MergedPolicy) { $MergedPolicy }
 
     # Copy all binary policy files to the relevant WDAC CI policy directory.
     if ($Deploy -or $DeployAndUpdate) {

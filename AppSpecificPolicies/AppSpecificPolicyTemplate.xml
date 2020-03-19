@@ -1,0 +1,38 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<SiPolicy xmlns="urn:schemas-microsoft-com:sipolicy" PolicyType="Supplemental Policy">
+  <VersionEx>10.0.0.0</VersionEx>
+  <BasePolicyID>{FEEDACDC-BEEF-CACE-F00D-FEEDACDCF00D}</BasePolicyID>
+  <PolicyID>{A2CBA44C-2CBC-45DC-9DDD-3BD635812689}</PolicyID>
+  <PlatformID>{2E07F7E4-194C-4D20-B7C9-6F44A6C5A234}</PlatformID>
+  <Rules />
+  <!--EKUS-->
+  <EKUs />
+  <!--File Rules-->
+  <FileRules />
+  <!--Signers-->
+  <Signers />
+  <!--Driver Signing Scenarios-->
+  <SigningScenarios>
+    <SigningScenario Value="131" ID="ID_SIGNINGSCENARIO_DRIVERS_1" FriendlyName="Auto generated policy on 11-14-2019">
+      <ProductSigners />
+    </SigningScenario>
+    <SigningScenario Value="12" ID="ID_SIGNINGSCENARIO_WINDOWS" FriendlyName="Auto generated policy on 11-14-2019">
+      <ProductSigners />
+    </SigningScenario>
+  </SigningScenarios>
+  <UpdatePolicySigners />
+  <CiSigners />
+  <HvciOptions>0</HvciOptions>
+  <Settings>
+    <Setting Provider="PolicyInfo" Key="Information" ValueName="Name">
+      <Value>
+        <String>REPLACEME</String>
+      </Value>
+    </Setting>
+    <Setting Provider="PolicyInfo" Key="Information" ValueName="Id">
+      <Value>
+        <String>REPLACEME</String>
+      </Value>
+    </Setting>
+  </Settings>
+</SiPolicy>
