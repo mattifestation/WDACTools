@@ -428,16 +428,28 @@ This code specifies several policy configurations, converts them to binary form,
         Copy-Item -Path "$PSScriptRoot\AppSpecificPolicies\AppSpecificPolicyTemplate.xml" -Destination $CopiedAppTemplateDestination -ErrorAction Stop
 
         # Assign the application-specific supplemental policy base policy ID to the base policy name specified.
-        Set-CIPolicyIdInfo -FilePath $CopiedAppTemplateDestination -SupplementsBasePolicyID $BasePolicyID
+        
+        # I'd love to use the supported cmdlet for this but I really don't like that you can't avoid
+        # Having the PolicyID reset.
+        # Set-CIPolicyIdInfo -FilePath $CopiedAppTemplateDestination -SupplementsBasePolicyID $BasePolicyID
+
+        $PolicyType = [Microsoft.SecureBoot.UserConfig.DriverFile].Assembly.GetType('Microsoft.SecureBoot.UserConfig.Policy')
+        $AppTemplatePolicy = $PolicyType.GetConstructor([String]).Invoke([Object[]] @($CopiedAppTemplateDestination))
+        $AppTemplatePolicy.SetBasePolicyID($BasePolicyID)
+        $AppTemplatePolicy.Save($CopiedAppTemplateDestination)
 
         # AppSpecificPolicyTemplate.xml is used for maintaining file rule options.
         # Note: AppSpecificPolicyTemplate.xml must be the first policy file specified as this is what Merge-CIPolicy takes policy options from.
-        [String[]] $AppSpecificPolicyFiles = $CopiedAppTemplateDestination
-        [String[]] $AppSpecificPolicyFiles += Get-ChildItem "$PSScriptRoot\AppSpecificPolicies\*.xml" -Exclude 'AppSpecificPolicyTemplate.xml' | Select-Object -ExpandProperty FullName
+        $AppSpecificPolicyFiles = New-Object -TypeName 'System.Collections.Generic.List`1[String]'
+
+        $AppSpecificPolicyFiles.Add($CopiedAppTemplateDestination)
+        Get-ChildItem "$PSScriptRoot\AppSpecificPolicies\*.xml" -Exclude 'AppSpecificPolicyTemplate.xml' |
+            Select-Object -ExpandProperty FullName |
+            ForEach-Object { $AppSpecificPolicyFiles.Add($_) }
 
         $MergedPolicyPath = "$ArtifactBasePath\MergedPolicy.xml"
 
-        $null = Merge-CIPolicy -OutputFilePath $MergedPolicyPath -PolicyPaths $AppSpecificPolicyFiles
+        $null = Merge-CIPolicy -OutputFilePath $MergedPolicyPath -PolicyPaths ([String[]] $AppSpecificPolicyFiles)
 
         [Xml] $PolicyXml = Get-Content -Path $MergedPolicyPath -Raw
 
@@ -482,20 +494,40 @@ This code specifies several policy configurations, converts them to binary form,
         }
     }
 
-    if ($BasePolicies) { $BasePolicies }
-    if ($SupplementalPolicies) { $SupplementalPolicies }
-    if ($MergedPolicy) { $MergedPolicy }
+    # Build a list of the generated binary policy files so that only those files are deployed
+    # when -Deploy or -DeployAndUpdate are specified.
+    $BinaryPolicyFiles = New-Object -TypeName 'System.Collections.Generic.List`1[String]'
+
+    if ($BasePolicies) {
+        $BasePolicies
+        $BasePolicies | ForEach-Object { $BinaryPolicyFiles.Add($_.BinaryFileInfo) }
+    }
+
+    if ($SupplementalPolicies) {
+        $SupplementalPolicies
+        $SupplementalPolicies | ForEach-Object { $BinaryPolicyFiles.Add($_.BinaryFileInfo) }
+    }
+
+    if ($MergedPolicy) {
+        $MergedPolicy
+        $BinaryPolicyFiles.Add($MergedPolicy.BinaryFileInfo)
+    }
 
     # Copy all binary policy files to the relevant WDAC CI policy directory.
     if ($Deploy -or $DeployAndUpdate) {
-        Get-ChildItem $ArtifactBasePath\*.cip | ForEach-Object {
-            $_ | Copy-Item -Destination "$Env:windir\System32\CodeIntegrity\CiPolicies\Active" -PassThru
+        $BinaryPolicyFiles | Get-ChildItem | ForEach-Object {
+            $DestinationDir = "$Env:windir\System32\CodeIntegrity\CiPolicies\Active"
+
+            Write-Verbose "Copying $($_.FullName) to $DestinationDir."
+            $_ | Copy-Item -Destination $DestinationDir -PassThru
         }
     }
 
     # Refresh all active code integrity policies so that the changes can take effect immediately without needing to reboot.
     if ($DeployAndUpdate) {
         Get-ChildItem -Path "$Env:windir\System32\CodeIntegrity\CiPolicies\Active\*.cip" | ForEach-Object {
+            Write-Verbose "Applying the following policy: $($_.FullName)"
+
             $Result = Invoke-CimMethod -Namespace root\Microsoft\Windows\CI -ClassName PS_UpdateAndCompareCIPolicy -MethodName Update -Arguments @{ FilePath = $_.FullName }
             if ($Result.ReturnValue -ne 0) {
                 "The following policy failed to refresh: $($_.FullName). Return value: $($Result.ReturnValue)"
