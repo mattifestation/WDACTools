@@ -3227,7 +3227,7 @@ Outputs a recovered Code Integrity policy XML file.
 
                             for ($i = 0; $i -lt $SupplementalSignerRuleEntryCount; $i++) {
                                 $SupplemetalSignersIndex = $BinaryReader.ReadUInt32()
-                                $SupplementalSigners[$i] = New-Object -TypeName CodeIntegrity.SupplementalSigners -Property @{ SignerId = $SIPolicy.Signers[$SupplemetalSignersIndex].ID }
+                                $SupplementalSigners[$i] = New-Object -TypeName CodeIntegrity.SupplementalPolicySigner -Property @{ SignerId = $SIPolicy.Signers[$SupplemetalSignersIndex].ID }
                             }
 
                             $SIPolicy.SupplementalPolicySigners = $SupplementalSigners
