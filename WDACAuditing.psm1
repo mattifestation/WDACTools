@@ -199,6 +199,10 @@ Specifies that events should only be returned since the last time the code integ
 
 Specifies that correlated signer and WHQL events should be collected. When there are many CodeIntegrity events present in the event log, collection of signer and WHQL events can be very time consuming.
 
+.PARAMETER IgnoreNativeImagesDLLs
+
+Specifies that events where ResolvedFilePath is like "$env:SystemRoot\assembly\NativeImages*.dll" should be skipped. Usefull to suppress events caused by auto-generated "NativeImages DLLs"
+
 .PARAMETER MaxEvents
 
 Specifies the maximum number of events that Get-WDACCodeIntegrityEvent returns. The default is to return all the events.
@@ -247,6 +251,9 @@ Return all kernel mode enforcement events.
 
         [Switch]
         $SignerAndWhqlChecks,
+
+        [Switch]
+        $IgnoreNativeImagesDLLs,
 
         [Int64]
         $MaxEvents
@@ -443,6 +450,8 @@ Return all kernel mode enforcement events.
             SignerInfo = $ResolvedSigners
         }
 
-        New-Object -TypeName PSObject -Property $CIEventProperties
+        if (-not $IgnoreNativeImagesDLLs -or ($IgnoreNativeImagesDLLs -and $CIEventProperties.ResolvedFilePath -notlike "$env:SystemRoot\assembly\NativeImages*.dll")) {
+            New-Object -TypeName PSObject -Property $CIEventProperties
+        }
     }
 }
