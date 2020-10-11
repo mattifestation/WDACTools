@@ -1,3 +1,33 @@
+function Get-WDACPolicyRefreshEventFilter {
+    <#
+    .SYNOPSIS
+    Returns a filter to use to get only events that occured since last policy refresh
+    
+    .DESCRIPTION
+    Get-WDACPolicyRefreshEventFilter retrieves the latestMicrosoft-Windows-CodeIntegrity/Operational policy refresh event (id 3099) and generates a string to insert in "FilterXPath" filters to only search for events generated after the latest policy refresh
+    
+    .EXAMPLE
+    Get-WDACPolicyRefreshEventFilter
+    
+    Looks for the latest policy refresh event and returns a filter string such as " and TimeCreated[@SystemTime >= '2020-10-05T08:11:22.7969367+02:00']"
+    #>
+    [CmdletBinding()]
+    param()
+
+    # Only consider failed audit events that occured after the last CI policy update (event ID 3099)
+    $LastPolicyUpdateEvent = Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-CodeIntegrity/Operational'; Id = 3099 } -MaxEvents 1 -ErrorAction Ignore
+
+    # Sometimes this event will not be present - e.g. if the log rolled since the last update.
+    if ($LastPolicyUpdateEvent) {
+        $DateTimeAfter = [Xml.XmlConvert]::ToString($LastPolicyUpdateEvent.TimeCreated.ToUniversalTime())
+
+        " and TimeCreated[@SystemTime >= '$DateTimeAfter']"
+    } else {
+        Write-Verbose "No policy update event was present in the event log. Ignoring the -SinceLastPolicyRefresh switch."
+        ''
+    }
+}
+
 function Get-WDACApplockerScriptMsiEvent {
 <#
 .SYNOPSIS
@@ -15,6 +45,10 @@ License: BSD 3-Clause
 
 Specifies the maximum number of events that Get-WDACCodeIntegrityEvent returns. The default is to return all the events.
 
+.PARAMETER SinceLastPolicyRefresh
+
+Specifies that events should only be returned since the last time the code integrity policy was refreshed. This option is useful for baselining purposes.
+
 .EXAMPLE
 
 Get-WDACApplockerScriptMsiEvent
@@ -26,12 +60,21 @@ Return all user-mode code integrity events (audit/enforcement) since the last co
 Get-WDACApplockerScriptMsiEvent -MaxEvents 5
 
 Return the most recent 5 script/MSI code integrity events.
+
+.EXAMPLE
+
+Get-WDACApplockerScriptMsiEvent -SinceLastPolicyRefresh
+
+Return all script/MSI code integrity events since the last code intgrity policy refresh.
 #>
 
     [CmdletBinding()]
     param (
         [Int64]
-        $MaxEvents
+        $MaxEvents,
+
+        [Switch]
+        $SinceLastPolicyRefresh
     )
 
     $MaxEventArg = @{}
@@ -39,7 +82,17 @@ Return the most recent 5 script/MSI code integrity events.
     # Pass -MaxEvents through to Get-WinEvent
     if ($MaxEvents) { $MaxEventArg = @{ MaxEvents = $MaxEvents } }
 
-    Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath '*[System[(EventID = 8028 or EventID = 8029)]]' @MaxEventArg -ErrorAction Ignore | ForEach-Object {
+    $PolicyRefreshFilter = ''
+
+    if ($SinceLastPolicyRefresh) {
+        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter
+    }
+
+    $Filter = "*[System[(EventID = 8028 or EventID = 8029)$($PolicyRefreshFilter)]]"
+
+    Write-Verbose "XPath Filter: $Filter"
+
+    Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
         switch ($_.Id) {
             8028 { $EventType = 'Audit' }
             8029 { $EventType = 'Enforce' }
@@ -182,17 +235,7 @@ Return all kernel mode enforcement events.
     $PolicyRefreshFilter = ''
 
     if ($SinceLastPolicyRefresh) {
-        # Only consider failed audit events that occured after the last CI policy update (event ID 3099)
-        $LastPolicyUpdateEvent = Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-CodeIntegrity/Operational'; Id = 3099 } -MaxEvents 1 -ErrorAction Ignore
-
-        # Sometimes this event will not be present - e.g. if the log rolled since the last update.
-        if ($LastPolicyUpdateEvent) {
-            $DateTimeAfter = [Xml.XmlConvert]::ToString($LastPolicyUpdateEvent.TimeCreated.ToUniversalTime())
-
-            $PolicyRefreshFilter = " and TimeCreated[@SystemTime >= '$DateTimeAfter']"
-        } else {
-            Write-Verbose "No policy update event was present in the event log. Ignoring the -SinceLastPolicyRefresh switch."
-        }
+        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter
     }
 
     $Filter = "*[System[$($ModeFilter)$($PolicyRefreshFilter)]$ScenarioFilter]"
