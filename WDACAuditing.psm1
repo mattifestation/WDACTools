@@ -2,13 +2,13 @@ function Get-WDACPolicyRefreshEventFilter {
     <#
     .SYNOPSIS
     Returns a filter to use to get only events that occured since last policy refresh
-    
+
     .DESCRIPTION
     Get-WDACPolicyRefreshEventFilter retrieves the latestMicrosoft-Windows-CodeIntegrity/Operational policy refresh event (id 3099) and generates a string to insert in "FilterXPath" filters to only search for events generated after the latest policy refresh
-    
+
     .EXAMPLE
     Get-WDACPolicyRefreshEventFilter
-    
+
     Looks for the latest policy refresh event and returns a filter string such as " and TimeCreated[@SystemTime >= '2020-10-05T08:11:22.7969367+02:00']"
     #>
     [CmdletBinding()]
@@ -25,6 +25,56 @@ function Get-WDACPolicyRefreshEventFilter {
     } else {
         Write-Verbose "No policy update event was present in the event log. Ignoring the -SinceLastPolicyRefresh switch."
         ''
+    }
+}
+
+function Get-WinEventData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [System.Diagnostics.Eventing.Reader.EventLogRecord[]] $Event
+    )
+
+    begin {
+        # Hash to cache provider data
+        $providers = @{}
+
+        # Hash to cache event templates
+        $eventTemplates = @{}
+    }
+
+    process {
+        foreach ($evt in $Event) {
+
+            # Get provider, either from hash, or from looking it up
+            if (-not $providers[$evt.ProviderName]) {
+                $providers[$evt.ProviderName] = Get-WinEvent -ListProvider $evt.ProviderName
+            }
+            $provider = $providers[$evt.ProviderName]
+
+            if ($provider.Events.Id -contains $evt.Id) {
+                $eventTemplateName = $evt.ProviderName, $evt.Id, $evt.Version -join '_'
+
+                if (-not $eventTemplates[$eventTemplateName]) {
+                    $eventTemplates[$eventTemplateName] = ($provider.Events | Where-Object { $_.Id -eq $evt.Id -and $_.Version -eq $evt.Version }).Template
+                }
+                [xml]$xmlTemplate = $eventTemplates[$eventTemplateName]
+
+                $eventData = @{}
+
+                for ($i = 0; $i -lt $event.Properties.Count; $i++) {
+                    $name = $xmlTemplate.template.data.name[$i] -replace ' ', ''
+                    $value = $event.Properties[$i].Value
+
+                    $eventData[$name] = $value
+                }
+
+                $eventData
+            }
+            else {
+                $evt.Properties.Value
+            }
+        }
     }
 }
 
@@ -85,7 +135,7 @@ Return all script/MSI code integrity events since the last code intgrity policy 
     $PolicyRefreshFilter = ''
 
     if ($SinceLastPolicyRefresh) {
-        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter
+        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter -Verbose:$false
     }
 
     $Filter = "*[System[(EventID = 8028 or EventID = 8029)$($PolicyRefreshFilter)]]"
@@ -98,18 +148,14 @@ Return all script/MSI code integrity events since the last code intgrity policy 
             8029 { $EventType = 'Enforce' }
         }
 
-        $SHA1FileHash = $null
-
-        if ($_.Properties[2].Value.Length -gt 0) {
-            $SHA1FileHash = ($_.Properties[2].Value | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        }
+        $eventData = $_ | Get-WinEventData
 
         $ObjectArgs = [Ordered] @{
             TimeCreated = $_.TimeCreated
             EventType = $EventType
-            FilePath = $_.Properties[1].Value
-            SHA1FileHash = $SHA1FileHash
-            UserWriteable = $_.Properties[8].Value
+            FilePath = $eventData.FilePath
+            SHA1FileHash = ($eventData.Sha1Hash | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+            UserWriteable = $eventData.UserWriteable
         }
 
         New-Object -TypeName PSObject -Property $ObjectArgs
@@ -235,7 +281,7 @@ Return all kernel mode enforcement events.
     $PolicyRefreshFilter = ''
 
     if ($SinceLastPolicyRefresh) {
-        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter
+        $PolicyRefreshFilter = Get-WDACPolicyRefreshEventFilter -Verbose:$false
     }
 
     $Filter = "*[System[$($ModeFilter)$($PolicyRefreshFilter)]$ScenarioFilter]"
@@ -282,10 +328,6 @@ Return all kernel mode enforcement events.
     if ($MaxEvents) { $MaxEventArg = @{ MaxEvents = $MaxEvents } }
 
     Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
-        if ($_.Version -lt 5) {
-            Write-Warning "Get-WDACCodeIntegrityEvent does not support event version $($_.Version). Version 5+ is supported. Ensure you are running Windows 1903+."
-        }
-
         switch ($_.Id) {
             3076 { $EventType = 'Audit' }
             3077 { $EventType = 'Enforce' }
@@ -294,6 +336,8 @@ Return all kernel mode enforcement events.
                 Write-Warning "Unsupported event type: $($_.Id)"
             }
         }
+
+        $eventData = $_ | Get-WinEventData
 
         $WHQLFailed = $null
 
@@ -317,7 +361,9 @@ Return all kernel mode enforcement events.
             $SignerInfo = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)'] and TimeCreated[@SystemTime >= '$CIEventDateTimeAfter'] and TimeCreated[@SystemTime < '$CIEventDateTimeBefore']]]" @MaxEventArg -ErrorAction Ignore
 
             $ResolvedSigners = $SignerInfo | ForEach-Object {
-                $SignatureTypeVal = $_.Properties[6].Value
+                $signerData = $_ | Get-WinEventData
+
+                $SignatureTypeVal = $signerData.SignatureType
 
                 # Note: these signature type mappings were determined based on inference.
                 switch ($SignatureTypeVal) {
@@ -325,29 +371,29 @@ Return all kernel mode enforcement events.
                     1 { $SignatureType = 'Authenticode' }
                     4 { $SignatureType = 'Catalog' }
                     default {
-                        $SignatureType = 'Unknown'
+                        $SignatureType = 'Unknown ({0})' -f $SignatureTypeVal
                         Write-Warning "Unknown signature type value: $SignatureTypeVal. Investigate what this might correspond to and update this function accordingly."
                     }
                 }
 
                 $SignerProperties = [Ordered] @{
-                    SignatureIndex = $_.Properties[1].Value
-                    PageHash = $_.Properties[5].Value
+                    SignatureIndex = $signerData.Signature
+                    PageHash = $signerData.PageHash
                     SignatureType = $SignatureType
-                    ValidatedSigningLevel = $SigningLevelMapping[$_.Properties[7].Value]
-                    NotValidBefore = $_.Properties[11].Value
-                    NotValidAfter = $_.Properties[12].Value
-                    PublisherName = $_.Properties[14].Value
-                    IssuerName = $_.Properties[16].Value
-                    PublisherTBSHash = (($_.Properties[18].Value | ForEach-Object { '{0:X2}' -f $_ }) -join '')
-                    IssuerTBSHash = (($_.Properties[20].Value | ForEach-Object { '{0:X2}' -f $_ }) -join '')
+                    ValidatedSigningLevel = $SigningLevelMapping[$signerData.ValidatedSigningLevel]
+                    NotValidBefore = $signerData.NotValidBefore
+                    NotValidAfter = $signerData.NotValidAfter
+                    PublisherName = $signerData.PublisherName
+                    IssuerName = $signerData.IssuerName
+                    PublisherTBSHash = ($signerData.PublisherTBSHash | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+                    IssuerTBSHash = ($signerData.IssuerTBSHash | ForEach-Object { '{0:X2}' -f $_ }) -join ''
                 }
 
                 New-Object -TypeName PSObject -Property $SignerProperties
             }
         }
 
-        $SigningScenarioVal = $_.Properties[16].Value
+        $SigningScenarioVal = $eventData.SISigningScenario
 
         switch ($SigningScenarioVal) {
             0 { $Scenario = 'Driver' }
@@ -358,7 +404,7 @@ Return all kernel mode enforcement events.
             }
         }
 
-        $FilePath = $_.Properties[1].Value
+        $FilePath = $eventData.FileName
 
         $ResolvedFilePath = $null
         # Make a best effort to resolve the device path to a normal path.
@@ -373,32 +419,26 @@ Return all kernel mode enforcement events.
             Write-Warning "The following file path was either not resolved properly or was not present on disk: $ResolvedFilePath"
         }
 
-        $SHA1FileHash = $null
-
-        if ($_.Properties[11].Value -eq 20) {
-            $SHA1FileHash = ($_.Properties[12].Value | ForEach-Object { '{0:X2}' -f $_ }) -join ''
-        }
-
         $CIEventProperties = [Ordered] @{
             TimeCreated = $_.TimeCreated
             EventType = $EventType
             SigningScenario = $Scenario
             FilePath = $FilePath
             ResolvedFilePath = $ResolvedFilePath
-            SHA1FileHash = $SHA1FileHash
+            SHA1FileHash = ($eventData.SHA1Hash | ForEach-Object { '{0:X2}' -f $_ }) -join ''
             ProcessID = $_.ProcessId
-            ProcessName = $_.Properties[3].Value
-            RequestedSigningLevel = $SigningLevelMapping[$_.Properties[4].Value]
-            ValidatedSigningLevel = $SigningLevelMapping[$_.Properties[5].Value]
-            PolicyName = $_.Properties[18].Value
-            PolicyID = $_.Properties[20].Value
-            PolicyGUID = $_.Properties[32].Value.Guid.ToUpper()
-            OriginalFileName = $_.Properties[24].Value
-            InternalName = $_.Properties[26].Value
-            FileDescription = $_.Properties[28].Value
-            ProductName = $_.Properties[30].Value
-            FileVersion = $_.Properties[31].Value
-            UserWriteable = $_.Properties[33].Value
+            ProcessName = $eventData.ProcessName
+            RequestedSigningLevel = $SigningLevelMapping[$eventData.RequestedSigningLevel]
+            ValidatedSigningLevel = $SigningLevelMapping[$eventData.ValidatedSigningLevel]
+            PolicyName = $eventData.PolicyName
+            PolicyID = $eventData.PolicyId
+            PolicyGUID = $(if ($eventData.PolicyGUID) { $eventData.PolicyGUID.ToUpper() } else { $null })
+            OriginalFileName = $eventData.OriginalFileName
+            InternalName = $eventData.InternalName
+            FileDescription = $eventData.FileDescription
+            ProductName = $eventData.ProductName
+            FileVersion = $eventData.FileVersion
+            UserWriteable = $eventData.UserWriteable
             FailedWHQL = $WHQLFailed
             SignerInfo = $ResolvedSigners
         }
