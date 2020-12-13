@@ -348,14 +348,11 @@ Return all kernel mode enforcement events.
 
         $WHQLFailed = $null
 
-        $CIEventDateTimeAfter = [Xml.XmlConvert]::ToString($_.TimeCreated.ToUniversalTime())
-        $CIEventDateTimeBefore = [Xml.XmlConvert]::ToString($_.TimeCreated.ToUniversalTime().AddSeconds(1))
-
         if ($SignerAndWhqlChecks) {
             $WHQLFailed = $False
 
             # A correlated 3082 event indicates that WHQL verification failed
-            $WHQLEvent = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3082 and Correlation[@ActivityID = '$($_.ActivityId.Guid)'] and TimeCreated[@SystemTime >= '$CIEventDateTimeAfter'] and TimeCreated[@SystemTime < '$CIEventDateTimeBefore']]]" -ErrorAction Ignore
+            $WHQLEvent = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3082 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -ErrorAction Ignore
 
             if ($WHQLEvent) { $WHQLFailed = $True }
         }
@@ -365,7 +362,7 @@ Return all kernel mode enforcement events.
         if ($SignerAndWhqlChecks) {
             # Retrieve correlated signer info (event ID 3089)
             # Note: there may be more than one correlated signer event in the case of the file having multiple signers.
-            $SignerInfo = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)'] and TimeCreated[@SystemTime >= '$CIEventDateTimeAfter'] and TimeCreated[@SystemTime < '$CIEventDateTimeBefore']]]" @MaxEventArg -ErrorAction Ignore
+            $SignerInfo = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" @MaxEventArg -ErrorAction Ignore
 
             $ResolvedSigners = $SignerInfo | ForEach-Object {
                 $signerData = $_ | Get-WinEventData
@@ -439,7 +436,7 @@ Return all kernel mode enforcement events.
             ValidatedSigningLevel = $SigningLevelMapping[$eventData.ValidatedSigningLevel]
             PolicyName = $eventData.PolicyName
             PolicyID = $eventData.PolicyId
-            PolicyGUID = $(if ($eventData.PolicyGUID) { $eventData.PolicyGUID.ToUpper() } else { $null })
+            PolicyGUID = $(if ($eventData.PolicyGUID) { $eventData.PolicyGUID.Guid.ToUpper() } else { $null })
             OriginalFileName = $eventData.OriginalFileName
             InternalName = $eventData.InternalName
             FileDescription = $eventData.FileDescription
