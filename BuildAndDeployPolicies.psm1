@@ -27,7 +27,27 @@ Returns an array of integer values representing the requested policy rule option
     [CmdletBinding()]
     param (
         [Parameter(Mandatory, Position = 0)]
-        [ValidateSet('Enabled:UMCI', 'Enabled:Boot Menu Protection', 'Required:WHQL', 'Enabled:Audit Mode', 'Disabled:Flight Signing', 'Enabled:Inherit Default Policy', 'Enabled:Unsigned System Integrity Policy', 'Allowed:Debug Policy Augmented', 'Required:EV Signers', 'Enabled:Advanced Boot Options Menu', 'Enabled:Boot Audit On Failure', 'Disabled:Script Enforcement', 'Required:Enforce Store Applications', 'Enabled:Managed Installer', 'Enabled:Intelligent Security Graph Authorization', 'Enabled:Invalidate EAs on Reboot', 'Enabled:Update Policy No Reboot', 'Enabled:Allow Supplemental Policies', 'Disabled:Runtime FilePath Rule Protection', 'Enabled:Dynamic Code Security')]
+        [ValidateSet('Enabled:UMCI',
+                     'Enabled:Boot Menu Protection',
+                     'Required:WHQL',
+                     'Enabled:Audit Mode',
+                     'Disabled:Flight Signing',
+                     'Enabled:Inherit Default Policy',
+                     'Enabled:Unsigned System Integrity Policy',
+                     'Allowed:Debug Policy Augmented',
+                     'Required:EV Signers',
+                     'Enabled:Advanced Boot Options Menu',
+                     'Enabled:Boot Audit On Failure',
+                     'Disabled:Script Enforcement',
+                     'Required:Enforce Store Applications',
+                     'Enabled:Managed Installer',
+                     'Enabled:Intelligent Security Graph Authorization',
+                     'Enabled:Invalidate EAs on Reboot',
+                     'Enabled:Update Policy No Reboot',
+                     'Enabled:Allow Supplemental Policies',
+                     'Disabled:Runtime FilePath Rule Protection',
+                     'Enabled:Dynamic Code Security',
+                     'Enabled:Revoked Expired As Unsigned')]
         [String[]] $PolicyOptionStrings
     )
 
@@ -52,6 +72,7 @@ Returns an array of integer values representing the requested policy rule option
         'Enabled:Allow Supplemental Policies' = 17
         'Disabled:Runtime FilePath Rule Protection' = 18
         'Enabled:Dynamic Code Security' = 19
+        'Enabled:Revoked Expired As Unsigned' = 20
     }
 
     foreach ($PolicyOptionString in $PolicyOptionStrings) {
@@ -155,7 +176,27 @@ Specifies configuration options for a merged supplemental policy (i.e. the polic
         $PolicyName,
 
         [String[]]
-        [ValidateSet('Enabled:UMCI', 'Enabled:Boot Menu Protection', 'Required:WHQL', 'Enabled:Audit Mode', 'Disabled:Flight Signing', 'Enabled:Inherit Default Policy', 'Enabled:Unsigned System Integrity Policy', 'Allowed:Debug Policy Augmented', 'Required:EV Signers', 'Enabled:Advanced Boot Options Menu', 'Enabled:Boot Audit On Failure', 'Disabled:Script Enforcement', 'Required:Enforce Store Applications', 'Enabled:Managed Installer', 'Enabled:Intelligent Security Graph Authorization', 'Enabled:Invalidate EAs on Reboot', 'Enabled:Update Policy No Reboot', 'Enabled:Allow Supplemental Policies', 'Disabled:Runtime FilePath Rule Protection', 'Enabled:Dynamic Code Security')]
+        [ValidateSet('Enabled:UMCI',
+                     'Enabled:Boot Menu Protection',
+                     'Required:WHQL',
+                     'Enabled:Audit Mode',
+                     'Disabled:Flight Signing',
+                     'Enabled:Inherit Default Policy',
+                     'Enabled:Unsigned System Integrity Policy',
+                     'Allowed:Debug Policy Augmented',
+                     'Required:EV Signers',
+                     'Enabled:Advanced Boot Options Menu',
+                     'Enabled:Boot Audit On Failure',
+                     'Disabled:Script Enforcement',
+                     'Required:Enforce Store Applications',
+                     'Enabled:Managed Installer',
+                     'Enabled:Intelligent Security Graph Authorization',
+                     'Enabled:Invalidate EAs on Reboot',
+                     'Enabled:Update Policy No Reboot',
+                     'Enabled:Allow Supplemental Policies',
+                     'Disabled:Runtime FilePath Rule Protection',
+                     'Enabled:Dynamic Code Security',
+                     'Enabled:Revoked Expired As Unsigned')]
         $PolicyRuleOptions
     )
 
@@ -268,7 +309,27 @@ This code specifies several policy configurations, converts them to binary form,
     [CmdletBinding(DefaultParameterSetName = 'Deploy')]
     param (
         [Parameter()]
-        [ValidateSet('Enabled:UMCI', 'Enabled:Boot Menu Protection', 'Required:WHQL', 'Enabled:Audit Mode', 'Disabled:Flight Signing', 'Enabled:Inherit Default Policy', 'Enabled:Unsigned System Integrity Policy', 'Allowed:Debug Policy Augmented', 'Required:EV Signers', 'Enabled:Advanced Boot Options Menu', 'Enabled:Boot Audit On Failure', 'Disabled:Script Enforcement', 'Required:Enforce Store Applications', 'Enabled:Managed Installer', 'Enabled:Intelligent Security Graph Authorization', 'Enabled:Invalidate EAs on Reboot', 'Enabled:Update Policy No Reboot', 'Enabled:Allow Supplemental Policies', 'Disabled:Runtime FilePath Rule Protection', 'Enabled:Dynamic Code Security')]
+        [ValidateSet('Enabled:UMCI',
+                     'Enabled:Boot Menu Protection',
+                     'Required:WHQL',
+                     'Enabled:Audit Mode',
+                     'Disabled:Flight Signing',
+                     'Enabled:Inherit Default Policy',
+                     'Enabled:Unsigned System Integrity Policy',
+                     'Allowed:Debug Policy Augmented',
+                     'Required:EV Signers',
+                     'Enabled:Advanced Boot Options Menu',
+                     'Enabled:Boot Audit On Failure',
+                     'Disabled:Script Enforcement',
+                     'Required:Enforce Store Applications',
+                     'Enabled:Managed Installer',
+                     'Enabled:Intelligent Security Graph Authorization',
+                     'Enabled:Invalidate EAs on Reboot',
+                     'Enabled:Update Policy No Reboot',
+                     'Enabled:Allow Supplemental Policies',
+                     'Disabled:Runtime FilePath Rule Protection',
+                     'Enabled:Dynamic Code Security',
+                     'Enabled:Revoked Expired As Unsigned')]
         [String[]]
         $CommonBasePolicyRuleOptions,
 
@@ -329,7 +390,11 @@ This code specifies several policy configurations, converts them to binary form,
             }
         }
 
-        $BaseConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $BaseConfig.PolicyRuleOptions
+        $BaseConfigurationPolicyRuleOptionValues = $null
+
+        if ($BaseConfig.PolicyRuleOptions) {
+            $BaseConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $BaseConfig.PolicyRuleOptions
+        }
 
         foreach ($RuleOption in $BaseConfigurationPolicyRuleOptionValues) {
             Set-RuleOption -FilePath $BasePolicyBuildPath -Option $RuleOption
@@ -379,7 +444,11 @@ This code specifies several policy configurations, converts them to binary form,
                 }
             }
 
-            $SupplementalConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $SupplementalConfig.PolicyRuleOptions
+            $SupplementalConfigurationPolicyRuleOptionValues = $null
+
+            if ($SupplementalConfig.PolicyRuleOptions) {
+                $SupplementalConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $SupplementalConfig.PolicyRuleOptions
+            }
 
             foreach ($RuleOption in $SupplementalConfigurationPolicyRuleOptionValues) {
                 Set-RuleOption -FilePath $SupplementalPolicyBuildPath -Option $RuleOption
@@ -425,27 +494,28 @@ This code specifies several policy configurations, converts them to binary form,
 
         # Copy the application-specific template policy to the artifacts directory.
         # This is done because the BasePolicyID element is going to be updated in the XML.
-        Copy-Item -Path "$PSScriptRoot\AppSpecificPolicies\AppSpecificPolicyTemplate.xml" -Destination $CopiedAppTemplateDestination -ErrorAction Stop
-
         # Assign the application-specific supplemental policy base policy ID to the base policy name specified.
         
         # I'd love to use the supported cmdlet for this but I really don't like that you can't avoid
         # Having the PolicyID reset.
         # Set-CIPolicyIdInfo -FilePath $CopiedAppTemplateDestination -SupplementsBasePolicyID $BasePolicyID
 
-        $PolicyType = [Microsoft.SecureBoot.UserConfig.DriverFile].Assembly.GetType('Microsoft.SecureBoot.UserConfig.Policy')
-        $AppTemplatePolicy = $PolicyType.GetConstructor([String]).Invoke([Object[]] @($CopiedAppTemplateDestination))
-        $AppTemplatePolicy.SetBasePolicyID($BasePolicyID)
-        $AppTemplatePolicy.Save($CopiedAppTemplateDestination)
+        $XmlString = Get-Content -Path "$PSScriptRoot\AppSpecificPolicies\AppSpecificPolicyTemplate.xml" -Raw
+
+        $BasePolicyIdToReplace = [Xml] $XmlString | Select-Object -ExpandProperty SiPolicy | Select -ExpandProperty BasePolicyId
+
+        $ReplacedXmlString = $XmlString -replace "<BasePolicyID>$BasePolicyIdToReplace</BasePolicyID>", "<BasePolicyID>$BasePolicyID</BasePolicyID>"
+
+        Out-File -FilePath $CopiedAppTemplateDestination -InputObject $ReplacedXmlString -Encoding utf8 -ErrorAction Stop
 
         # AppSpecificPolicyTemplate.xml is used for maintaining file rule options.
         # Note: AppSpecificPolicyTemplate.xml must be the first policy file specified as this is what Merge-CIPolicy takes policy options from.
-        $AppSpecificPolicyFiles = New-Object -TypeName 'System.Collections.Generic.List`1[String]'
+        $AppSpecificPolicyFiles = New-Object -TypeName String[](0)
 
-        $AppSpecificPolicyFiles.Add($CopiedAppTemplateDestination)
+        $AppSpecificPolicyFiles += $CopiedAppTemplateDestination
         Get-ChildItem "$PSScriptRoot\AppSpecificPolicies\*.xml" -Exclude 'AppSpecificPolicyTemplate.xml' |
             Select-Object -ExpandProperty FullName |
-            ForEach-Object { $AppSpecificPolicyFiles.Add($_) }
+            ForEach-Object { $AppSpecificPolicyFiles += $_ }
 
         $MergedPolicyPath = "$ArtifactBasePath\MergedPolicy.xml"
 
@@ -462,7 +532,11 @@ This code specifies several policy configurations, converts them to binary form,
             }
         }
 
-        $MergedConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $MergedPolicyConfiguration.PolicyRuleOptions
+        $MergedConfigurationPolicyRuleOptionValues = $null
+
+        if ($MergedPolicyConfiguration.PolicyRuleOptions) {
+            $MergedConfigurationPolicyRuleOptionValues = ConvertTo-WDACPolicyRuleValue -PolicyOptionStrings $MergedPolicyConfiguration.PolicyRuleOptions
+        }
 
         foreach ($RuleOption in $MergedConfigurationPolicyRuleOptionValues) {
             Set-RuleOption -FilePath $MergedPolicyPath -Option $RuleOption
@@ -496,21 +570,21 @@ This code specifies several policy configurations, converts them to binary form,
 
     # Build a list of the generated binary policy files so that only those files are deployed
     # when -Deploy or -DeployAndUpdate are specified.
-    $BinaryPolicyFiles = New-Object -TypeName 'System.Collections.Generic.List`1[String]'
+    $BinaryPolicyFiles = New-Object -TypeName String[](0)
 
     if ($BasePolicies) {
         $BasePolicies
-        $BasePolicies | ForEach-Object { $BinaryPolicyFiles.Add($_.BinaryFileInfo) }
+        $BasePolicies | ForEach-Object { $BinaryPolicyFiles += $_.BinaryFileInfo }
     }
 
     if ($SupplementalPolicies) {
         $SupplementalPolicies
-        $SupplementalPolicies | ForEach-Object { $BinaryPolicyFiles.Add($_.BinaryFileInfo) }
+        $SupplementalPolicies | ForEach-Object { $BinaryPolicyFiles += $_.BinaryFileInfo }
     }
 
     if ($MergedPolicy) {
         $MergedPolicy
-        $BinaryPolicyFiles.Add($MergedPolicy.BinaryFileInfo)
+        $BinaryPolicyFiles += $MergedPolicy.BinaryFileInfo
     }
 
     # Copy all binary policy files to the relevant WDAC CI policy directory.
@@ -530,8 +604,69 @@ This code specifies several policy configurations, converts them to binary form,
 
             $Result = Invoke-CimMethod -Namespace root\Microsoft\Windows\CI -ClassName PS_UpdateAndCompareCIPolicy -MethodName Update -Arguments @{ FilePath = $_.FullName }
             if ($Result.ReturnValue -ne 0) {
-                "The following policy failed to refresh: $($_.FullName). Return value: $($Result.ReturnValue)"
+                Write-Error "The following policy failed to refresh: $($_.FullName). Return value: $($Result.ReturnValue)"
             }
         }
     }
+}
+
+filter Update-WDACBinaryCodeIntegrityPolicy {
+<#
+.SYNOPSIS
+
+Refreshes a binary code integrity policy without requiring a reboot.
+
+.DESCRIPTION
+
+Update-WDACBinaryCodeIntegrityPolicy is used to explicitly refresh one or more binary code integrity policies without requiring a reboot. In order to support this scenario, your base policy must be configured with the "Enabled:Update Policy No Reboot" option.
+
+Author: Matthew Graeber
+
+.PARAMETER Path
+
+Specifies the path to a binary code integrity file that you would like to explicitly update without rebooting. A binary code integrity policy will have a file extension of .p7b or .cip in a multi-policy scenario.
+
+.EXAMPLE
+
+Update-WDACBinaryPolicy -Path C:\Windows\System32\CodeIntegrity\SIPolicy.p7b
+
+Updating a single policy.
+
+.EXAMPLE
+
+Get-ChildItem -Path "$Env:windir\System32\CodeIntegrity\CiPolicies\Active\*.cip" | Update-WDACBinaryCodeIntegrityPolicy
+
+Updating all policies in a multi-policy scenario.
+#>
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [String]
+        [ValidateNotNullOrEmpty()]
+        [Alias('FullName')]
+        $Path
+    )
+
+    $FullPath = Resolve-Path $Path
+
+    $Result = Invoke-CimMethod -Namespace root\Microsoft\Windows\CI -ClassName PS_UpdateAndCompareCIPolicy -MethodName Update -Arguments @{ FilePath = $FullPath.Path }
+    
+    if ($Result.ReturnValue -ne 0) {
+        Write-Error "The following policy failed to refresh: $($FullPath.Path). Return value: $($Result.ReturnValue)"
+    }
+}
+
+function Disable-WDACDeployedPolicy {
+<#
+.SYNOPSIS
+
+Disables the currently deployed code integrity policy. Note: this does not delete deployed policy files in %windir%\System32\CodeIntegrity. Those should be removed manually, if desired.
+
+.EXAMPLE
+
+Disable-WDACDeployedPolicy
+#>
+
+    Invoke-CimMethod -Namespace root\Microsoft\Windows\CI -ClassName PS_UpdateAndCompareCIPolicy -MethodName Delete
 }

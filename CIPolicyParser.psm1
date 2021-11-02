@@ -74,6 +74,7 @@ Outputs a recovered Code Integrity policy XML file.
             EnabledDeveloperModeDynamicCodeTrust =            0x00000100,
             EnabledAllowSupplementalPolicies =                0x00000400,
             DisabledRuntimeFilePathRuleProtection =           0x00000800,
+            EnabledRevokedExpiredAsUnsigned =                 0x00002000,
             EnabledAuditMode =                                0x00010000,
             DisabledFlightSigning =                           0x00020000,
             EnabledInheritDefaultPolicy =                     0x00040000,
@@ -212,6 +213,10 @@ Outputs a recovered Code Integrity policy XML file.
             /// <remarks/>
             [System.Xml.Serialization.XmlEnumAttribute("Disabled:Runtime FilePath Rule Protection")]
             DisabledRuntimeFilePathRuleProtection,
+
+            /// <remarks/>
+            [System.Xml.Serialization.XmlEnumAttribute("Enabled:Revoked Expired As Unsigned")]
+            EnabledRevokedExpiredAsUnsigned,
 
             /// <remarks/>
             [System.Xml.Serialization.XmlEnumAttribute("Enabled:Audit Mode")]
@@ -2502,7 +2507,7 @@ Outputs a recovered Code Integrity policy XML file.
             'a244370e-44c9-4c06-b551-f6016e563076' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Enterprise Code Integrity Policy (SiPolicy.p7b or UpdateSiPolicy.p7b)" }
             '2a5a0136-f09f-498e-99cc-51099011157c' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Windows Revoke Code Integrity Policy (RvkSiPolicy.p7b or UpdateRvkSiPolicy.p7b)" }
             '976d12c8-cb9f-4730-be52-54600843238e' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - SKU Code Integrity Policy (SkuSiPolicy.p7b or UpdateSkuSiPolicy.p7b)" }
-            '5951a96a-e0b5-4d3d-8fb8-3e5b61030784' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Windows Lockdown Code Integrity Policy (WinSiPolicy.p7b or UpdateWinSiPolicy.p7b)" }
+            '5951a96a-e0b5-4d3d-8fb8-3e5b61030784' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Windows Lockdown (S-Mode) Code Integrity Policy (WinSiPolicy.p7b or UpdateWinSiPolicy.p7b)" }
             '4e61c68c-97f6-430b-9cd7-9b1004706770' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Advanced Threat Protection Code Integrity Policy (ATPSiPolicy.p7b or UpdateATPSiPolicy.p7b)" }
             'd2bda982-ccf6-4344-ac5b-0b44427b6816' { Write-Verbose "PolicyTypeID: {$PolicyTypeID} - Driver Code Integrity Policy (DriverSiPolicy.p7b or UpdateDriverSiPolicy.p7b)" }
         }
