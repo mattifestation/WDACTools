@@ -1,3 +1,95 @@
+# File paths are often in the format of device path (e.g. \Device\HarddiskVolumeN\).
+# Get-Partition is used to map the volume number to a partition so that file paths can be normalized.
+$Script:PartitionMapping = @{}
+
+Get-Partition | Where-Object { $_.DriveLetter } | ForEach-Object { $PartitionMapping[$_.PartitionNumber.ToString()] = $_.DriveLetter }
+
+# Try again. Get-Partition is flakey for some reason but it seems to work if tried a second time.
+if ($PartitionMapping.Count -eq 0) {
+    Get-Partition | Where-Object { $_.DriveLetter } | ForEach-Object { $PartitionMapping[$_.PartitionNumber.ToString()] = $_.DriveLetter }
+}
+
+# Resolve user names from SIDs
+$Script:UserMapping = @{}
+
+Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
+
+$Script:Providers = @{
+    'Microsoft-Windows-AppLocker'     = (Get-WinEvent -ListProvider Microsoft-Windows-AppLocker)
+    'Microsoft-Windows-CodeIntegrity' = (Get-WinEvent -ListProvider Microsoft-Windows-CodeIntegrity)
+}
+
+# Hash to cache event templates
+$Script:EventTemplates = @{}
+
+# This hashtable is used to resolve RequestedSigningLevel and ValidatedSigningLevel fields into human-readable properties
+# For more context around signing levels, Alex Ionescu (@aionescu) has a great resource on them:
+# http://www.alex-ionescu.com/?p=146
+# They are also officially documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#validatedsigninglevel
+$Script:SigningLevelMapping = @{
+    [Byte] 0x0 = 'Not Checked'
+    [Byte] 0x1 = 'Unsigned'
+    [Byte] 0x2 = 'WDAC Code Integrity Policy'
+    [Byte] 0x3 = 'Developer-Signed'
+    [Byte] 0x4 = 'Authenticode-Signed'
+    [Byte] 0x5 = 'Microsoft Store-Signed PPL'
+    [Byte] 0x6 = 'Microsoft Store-Signed'
+    [Byte] 0x7 = 'Antimalware PPL'
+    [Byte] 0x8 = 'Microsoft-Signed'
+    [Byte] 0x9 = 'Custom4'
+    [Byte] 0xA = 'Custom5'
+    [Byte] 0xB = '.NET NGEN Signer'
+    [Byte] 0xC = 'Windows'
+    [Byte] 0xD = 'Windows PPL'
+    [Byte] 0xE = 'Windows TCB'
+    [Byte] 0xF = 'Custom6'
+}
+
+# These are documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#signaturetype
+$Script:SignatureTypeMapping = @{
+    [Byte] 0 = 'Unsigned'
+    [Byte] 1 = 'Embedded Authenticode Signature'
+    [Byte] 2 = 'Cached CI Extended Attribute Signature'
+    [Byte] 3 = 'Cached Catalog Signature'
+    [Byte] 4 = 'Catalog Signature'
+    [Byte] 5 = 'Cached CI Extended Attribute Hint'
+    [Byte] 6 = 'Appx or MSIX Package Catalog Verified'
+    [Byte] 7 = 'File was Verified'
+}
+
+# These are documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#verificationerror
+$Script:VerificationErrorMapping = @{
+    [Byte] 0 = 'Successfully verified signature'
+    [Byte] 1 = 'File has an invalid hash'
+    [Byte] 2 = 'File contains shared writable sections'
+    [Byte] 3 = 'File is not signed'
+    [Byte] 4 = 'Revoked signature'
+    [Byte] 5 = 'Expired signature'
+    [Byte] 6 = 'File is signed using a weak hashing algorithm which does not meet the minimum policy'
+    [Byte] 7 = 'Invalid root certificate'
+    [Byte] 8 = 'Signature was unable to be validated; generic error'
+    [Byte] 9 = 'Signing time not trusted'
+    [Byte] 10 = 'The file must be signed using page hashes for this scenario'
+    [Byte] 11 = 'Page hash mismatch'
+    [Byte] 12 = 'Not valid for a PPL (Protected Process Light)'
+    [Byte] 13 = 'Not valid for a PP (Protected Process)'
+    [Byte] 14 = 'The signature is missing the required ARM EKU'
+    [Byte] 15 = 'Failed WHQL check'
+    [Byte] 16 = 'Default policy signing level not met'
+    [Byte] 17 = "Custom policy signing level not met; returned when signature doesn't validate against an SBCP-defined set of certs"
+    [Byte] 18 = 'Custom signing level not met; returned if signature fails to match CISigners in UMCI'
+    [Byte] 19 = 'Binary is revoked by file hash'
+    [Byte] 20 = "SHA1 cert hash's timestamp is missing or after valid cutoff as defined by Weak Crypto Policy"
+    [Byte] 21 = 'Failed to pass WDAC policy'
+    [Byte] 22 = 'Not IUM (Isolated User Mode) signed; indicates trying to load a non-trustlet binary into a trustlet'
+    [Byte] 23 = 'Invalid image hash'
+    [Byte] 24 = 'Flight root not allowed; indicates trying to run flight-signed code on production OS'
+    [Byte] 25 = 'Anti-cheat policy violation'
+    [Byte] 26 = 'Explicitly denied by WDAC policy'
+    [Byte] 27 = 'The signing chain appears to be tampered/invalid'
+    [Byte] 28 = 'Resource page hash mismatch'
+}
+
 function Get-WDACPolicyRefreshEventFilter {
     <#
     .SYNOPSIS
@@ -32,49 +124,35 @@ function Get-WDACPolicyRefreshEventFilter {
 function Get-WinEventData {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [System.Diagnostics.Eventing.Reader.EventLogRecord[]] $Event
+        [Parameter(Mandatory)]
+        [Diagnostics.Eventing.Reader.EventLogRecord] $EventRecord
     )
 
-    begin {
-        # Hash to cache provider data
-        $providers = @{}
-
-        # Hash to cache event templates
-        $eventTemplates = @{}
-    }
-
     process {
-        foreach ($evt in $Event) {
+        $Provider = $Providers[$EventRecord.ProviderName]
 
-            # Get provider, either from hash, or from looking it up
-            if (-not $providers[$evt.ProviderName]) {
-                $providers[$evt.ProviderName] = Get-WinEvent -ListProvider $evt.ProviderName
+        if ($Provider.Events.Id -contains $EventRecord.Id) {
+            $EventTemplateName = $EventRecord.ProviderName, $EventRecord.Id, $EventRecord.Version -join '_'
+
+            if (-not $EventTemplates[$EventTemplateName]) {
+                $EventTemplates[$EventTemplateName] = ($Provider.Events | Where-Object { $_.Id -eq $EventRecord.Id -and $_.Version -eq $EventRecord.Version }).Template
             }
-            $provider = $providers[$evt.ProviderName]
 
-            if ($provider.Events.Id -contains $evt.Id) {
-                $eventTemplateName = $evt.ProviderName, $evt.Id, $evt.Version -join '_'
+            [Xml] $XmlTemplate = $EventTemplates[$EventTemplateName]
 
-                if (-not $eventTemplates[$eventTemplateName]) {
-                    $eventTemplates[$eventTemplateName] = ($provider.Events | Where-Object { $_.Id -eq $evt.Id -and $_.Version -eq $evt.Version }).Template
-                }
-                [xml]$xmlTemplate = $eventTemplates[$eventTemplateName]
+            $EventData = @{}
 
-                $EventData = @{}
+            for ($i = 0; $i -lt $EventRecord.Properties.Count; $i++) {
+                $Name = $XmlTemplate.template.data.name[$i] -replace ' ', ''
+                $Value = $EventRecord.Properties[$i].Value
 
-                for ($i = 0; $i -lt $event.Properties.Count; $i++) {
-                    $name = $xmlTemplate.template.data.name[$i] -replace ' ', ''
-                    $value = $event.Properties[$i].Value
-
-                    $EventData[$name] = $value
-                }
-
-                $EventData
+                $EventData[$Name] = $Value
             }
-            else {
-                $evt.Properties.Value
-            }
+
+            $EventData
+        }
+        else {
+            $EventRecord.Properties.Value
         }
     }
 }
@@ -186,7 +264,7 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
             # Retrieve correlated signer info (event ID 8038)
             # Note: there may be more than one correlated signer event in the case of the file having multiple signers.
             $Signer = Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath "*[System[EventID = 8038 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -MaxEvents 1 -ErrorAction Ignore
-        
+
             # Unsigned scripts will often generate bogus 8038 events. Don't process them
             if ($Signer.Properties.Count -gt 0) {
 
@@ -195,7 +273,7 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
                 }
 
                 $ResolvedSigners = $Signer | ForEach-Object {
-                    $SignerData = $_ | Get-WinEventData
+                    $SignerData = Get-WinEventData -EventRecord $_
 
                     if (-not (($SignerData.PublisherNameLength -eq 0) -and ($SignerData.IssuerNameLength -eq 0) -and ($SignerData.PublisherTBSHashSize -eq 0) -and ($SignerData.IssuerTBSHashSize -eq 0))) {
                         $SigningStatus = 'Signed'
@@ -212,7 +290,7 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
             }
         }
 
-        $EventData = $_ | Get-WinEventData
+        $EventData = Get-WinEventData -EventRecord $_
 
         $UserName = $UserMapping[$_.UserId.Value]
 
@@ -274,13 +352,13 @@ Specifies that events should only be returned since the last time the code integ
 
 Specifies that correlated signer information should be collected. Note: When there are many CodeIntegrity events present in the event log, collection of signature events can be time consuming.
 
-.PRAMETER CheckWhqlStatus
+.PARAMETER CheckWhqlStatus
 
 Specifies that correlated WHQL events should be collected. Supplying this switch will populate the returned FailedWHQL property.
 
 .PARAMETER IgnoreNativeImagesDLLs
 
-Specifies that events where ResolvedFilePath is like "$env:SystemRoot\assembly\NativeImages*.dll" should be skipped. Usefull to suppress events caused by auto-generated "NativeImages DLLs"
+Specifies that events where ResolvedFilePath is like "$env:SystemRoot\assembly\NativeImages*.dll" should be skipped. Useful to suppress events caused by auto-generated "NativeImages DLLs"
 
 .PARAMETER IgnoreDenyEvents
 
@@ -402,90 +480,6 @@ Return all kernel mode enforcement events.
 
     Write-Verbose "XPath Filter: $Filter"
 
-    # File paths are often in the format of device path (e.g. \Device\HarddiskVolumeN\).
-    # Get-Partition is used to map the volume number to a partition so that file paths can be normalized.
-    $Partitions = Get-Partition
-
-    $PartitionMapping = @{}
-
-    foreach ($Partition in $Partitions) {
-        if ($Partition.DriveLetter) {
-            $PartitionMapping[$Partition.PartitionNumber.ToString()] = $Partition.DriveLetter
-        }
-    }
-
-    # Resolve user names from SIDs
-    $UserMapping = @{}
-    Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
-
-    # This hashtable is used to resolve RequestedSigningLevel and ValidatedSigningLevel fields into human-readable properties
-    # For more context around signing levels, Alex Ionescu (@aionescu) has a great resource on them:
-    # http://www.alex-ionescu.com/?p=146
-    # They are also officially documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#validatedsigninglevel
-    $SigningLevelMapping = @{
-        [Byte] 0x0 = 'Not Checked'
-        [Byte] 0x1 = 'Unsigned'
-        [Byte] 0x2 = 'WDAC Code Integrity Policy'
-        [Byte] 0x3 = 'Developer-Signed'
-        [Byte] 0x4 = 'Authenticode-Signed'
-        [Byte] 0x5 = 'Microsoft Store-Signed PPL'
-        [Byte] 0x6 = 'Microsoft Store-Signed'
-        [Byte] 0x7 = 'Antimalware PPL'
-        [Byte] 0x8 = 'Microsoft-Signed'
-        [Byte] 0x9 = 'Custom4'
-        [Byte] 0xA = 'Custom5'
-        [Byte] 0xB = '.NET NGEN Signer'
-        [Byte] 0xC = 'Windows'
-        [Byte] 0xD = 'Windows PPL'
-        [Byte] 0xE = 'Windows TCB'
-        [Byte] 0xF = 'Custom6'
-    }
-
-    # These are documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#signaturetype
-    $SignatureTypeMapping = @{
-        [Byte] 0 = 'Unsigned'
-        [Byte] 1 = 'Embedded Authenticode Signature'
-        [Byte] 2 = 'Cached CI Extended Attribute Signature'
-        [Byte] 3 = 'Cached Catalog Signature'
-        [Byte] 4 = 'Catalog Signature'
-        [Byte] 5 = 'Cached CI Extended Attribute Hint'
-        [Byte] 6 = 'Appx or MSIX Package Catalog Verified'
-        [Byte] 7 = 'File was Verified'
-    }
-
-    # These are documented here: https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/event-tag-explanations#verificationerror
-    $VerificationErrorMapping = @{
-        [Byte] 0 = 'Successfully verified signature'
-        [Byte] 1 = 'File has an invalid hash'
-        [Byte] 2 = 'File contains shared writable sections'
-        [Byte] 3 = 'File is not signed'
-        [Byte] 4 = 'Revoked signature'
-        [Byte] 5 = 'Expired signature'
-        [Byte] 6 = 'File is signed using a weak hashing algorithm which does not meet the minimum policy'
-        [Byte] 7 = 'Invalid root certificate'
-        [Byte] 8 = 'Signature was unable to be validated; generic error'
-        [Byte] 9 = 'Signing time not trusted'
-        [Byte] 10 = 'The file must be signed using page hashes for this scenario'
-        [Byte] 11 = 'Page hash mismatch'
-        [Byte] 12 = 'Not valid for a PPL (Protected Process Light)'
-        [Byte] 13 = 'Not valid for a PP (Protected Process)'
-        [Byte] 14 = 'The signature is missing the required ARM EKU'
-        [Byte] 15 = 'Failed WHQL check'
-        [Byte] 16 = 'Default policy signing level not met'
-        [Byte] 17 = "Custom policy signing level not met; returned when signature doesn't validate against an SBCP-defined set of certs"
-        [Byte] 18 = 'Custom signing level not met; returned if signature fails to match CISigners in UMCI'
-        [Byte] 19 = 'Binary is revoked by file hash'
-        [Byte] 20 = "SHA1 cert hash's timestamp is missing or after valid cutoff as defined by Weak Crypto Policy"
-        [Byte] 21 = 'Failed to pass WDAC policy'
-        [Byte] 22 = 'Not IUM (Isolated User Mode) signed; indicates trying to load a non-trustlet binary into a trustlet'
-        [Byte] 23 = 'Invalid image hash'
-        [Byte] 24 = 'Flight root not allowed; indicates trying to run flight-signed code on production OS'
-        [Byte] 25 = 'Anti-cheat policy violation'
-        [Byte] 26 = 'Explicitly denied by WDAC policy'
-        [Byte] 27 = 'The signing chain appears to be tampered/invalid'
-        [Byte] 28 = 'Resource page hash mismatch'
-    }
-
     $EventIdMapping = @{
         3076 = 'Audit'
         3077 = 'Enforce'
@@ -502,7 +496,7 @@ Return all kernel mode enforcement events.
     if ($MaxEvents) { $MaxEventArg = @{ MaxEvents = $MaxEvents } }
 
     Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
-        $EventData = $_ | Get-WinEventData
+        $EventData = Get-WinEventData -EventRecord $_
 
         $WHQLFailed = $null
 
@@ -522,13 +516,13 @@ Return all kernel mode enforcement events.
             # Retrieve correlated signer info (event ID 3089)
             # Note: there may be more than one correlated signer event in the case of the file having multiple signers.
             $Signer = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -MaxEvents 1 -ErrorAction Ignore
-            
+
             if ($Signer.Properties[0].Value -gt 1) {
                 $Signer = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -MaxEvents ($Signer.Properties[0].Value) -ErrorAction Ignore
             }
-            
+
             $ResolvedSigners = $Signer | ForEach-Object {
-                $SignerData = $_ | Get-WinEventData
+                $SignerData = Get-WinEventData -EventRecord $_
 
                 $SignatureType = $SignatureTypeMapping[$SignerData.SignatureType]
 

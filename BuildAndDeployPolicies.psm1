@@ -366,6 +366,8 @@ This code specifies several policy configurations, converts them to binary form,
 
     $ArtifactBasePath = "$PSScriptRoot\BuildArtifacts"
 
+    $MergedPolicy = $null
+
     if ($ArtifactPath) {
         $ArtifactBasePath = $ArtifactPath
     }
@@ -495,14 +497,14 @@ This code specifies several policy configurations, converts them to binary form,
         # Copy the application-specific template policy to the artifacts directory.
         # This is done because the BasePolicyID element is going to be updated in the XML.
         # Assign the application-specific supplemental policy base policy ID to the base policy name specified.
-        
+
         # I'd love to use the supported cmdlet for this but I really don't like that you can't avoid
         # Having the PolicyID reset.
         # Set-CIPolicyIdInfo -FilePath $CopiedAppTemplateDestination -SupplementsBasePolicyID $BasePolicyID
 
         $XmlString = Get-Content -Path "$PSScriptRoot\AppSpecificPolicies\AppSpecificPolicyTemplate.xml" -Raw
 
-        $BasePolicyIdToReplace = [Xml] $XmlString | Select-Object -ExpandProperty SiPolicy | Select -ExpandProperty BasePolicyId
+        $BasePolicyIdToReplace = [Xml] $XmlString | Select-Object -ExpandProperty SiPolicy | Select-Object -ExpandProperty BasePolicyId
 
         $ReplacedXmlString = $XmlString -replace "<BasePolicyID>$BasePolicyIdToReplace</BasePolicyID>", "<BasePolicyID>$BasePolicyID</BasePolicyID>"
 
@@ -651,7 +653,7 @@ Updating all policies in a multi-policy scenario.
     $FullPath = Resolve-Path $Path
 
     $Result = Invoke-CimMethod -Namespace root\Microsoft\Windows\CI -ClassName PS_UpdateAndCompareCIPolicy -MethodName Update -Arguments @{ FilePath = $FullPath.Path }
-    
+
     if ($Result.ReturnValue -ne 0) {
         Write-Error "The following policy failed to refresh: $($FullPath.Path). Return value: $($Result.ReturnValue)"
     }
