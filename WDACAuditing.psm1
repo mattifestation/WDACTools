@@ -10,9 +10,13 @@ if ($PartitionMapping.Count -eq 0) {
 }
 
 # Resolve user names from SIDs
-$Script:UserMapping = @{}
+function Get-UserMapping {
+    if (-not $UserMapping) {
+        $Script:UserMapping = @{}
 
-Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
+        Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
+    }
+}
 
 $Script:Providers = @{
     'Microsoft-Windows-AppLocker'     = (Get-WinEvent -ListProvider Microsoft-Windows-AppLocker)
@@ -248,6 +252,9 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
         8029 = 'Enforce'
         8037 = 'Allowed'
     }
+
+    # Resolve user names from SIDs
+    Get-UserMapping
 
     Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
         $ResolvedSigners = $null
@@ -485,6 +492,9 @@ Return all kernel mode enforcement events.
         [UInt32] 0 = 'Driver'
         [UInt32] 1 = 'UserMode'
     }
+
+    # Resolve user names from SIDs
+    Get-UserMapping
 
     $MaxEventArg = @{}
 
