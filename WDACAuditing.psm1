@@ -11,11 +11,23 @@ if ($PartitionMapping.Count -eq 0) {
 
 # Resolve user names from SIDs
 function Get-UserMapping {
+    [CmdletBinding()]
+    param (
+        # Security identifier of the account to look up
+        [Parameter(Mandatory)]
+        [string]$SID
+    )
+
     if (-not $UserMapping) {
         $Script:UserMapping = @{}
-
-        Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
     }
+
+    if (-not ($UserMapping[$SID])) {
+        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter "SID='$SID'"
+        # Revert to the SID if a user name cannot be resolved
+        $UserMapping[$SID] = if ($Account.Caption) {$Account.Caption} else {$SID}
+    }
+    $UserMapping[$SID]
 }
 
 $Script:Providers = @{
@@ -253,9 +265,6 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
         8037 = 'Allowed'
     }
 
-    # Resolve user names from SIDs
-    Get-UserMapping
-
     Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
         $ResolvedSigners = $null
         $SigningStatus = $null
@@ -295,10 +304,7 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
 
         $EventData = Get-WinEventData -EventRecord $_
 
-        $UserName = $UserMapping[$_.UserId.Value]
-
-        # Revert to the SID if a user name cannot be resolved
-        if (-not $UserName) { $UserName = $_.UserId }
+        $UserName = Get-UserMapping $_.UserId.Value
 
         $ObjectArgs = [Ordered] @{
             TimeCreated = $_.TimeCreated
@@ -493,9 +499,6 @@ Return all kernel mode enforcement events.
         [UInt32] 1 = 'UserMode'
     }
 
-    # Resolve user names from SIDs
-    Get-UserMapping
-
     $MaxEventArg = @{}
 
     # Pass -MaxEvents through to Get-WinEvent
@@ -585,10 +588,7 @@ Return all kernel mode enforcement events.
                 Write-Warning "The following process file path was either not resolved properly or was not present on disk: $ResolvedProcessName"
             }
 
-            $UserName = $UserMapping[$_.UserId.Value]
-
-            # Revert to the SID if a user name cannot be resolved
-            if (-not $UserName) { $UserName = $_.UserId }
+            $UserName = Get-UserMapping $_.UserId.Value
 
             $CIEventProperties = [Ordered] @{
                 TimeCreated = $_.TimeCreated
