@@ -249,10 +249,6 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
         8037 = 'Allowed'
     }
 
-    # Resolve user names from SIDs
-    $UserMapping = @{}
-    Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
-
     Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
         $ResolvedSigners = $null
         $SigningStatus = $null
