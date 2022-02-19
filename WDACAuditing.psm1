@@ -10,6 +10,7 @@ if ($PartitionMapping.Count -eq 0) {
 }
 
 # Resolve user names from SIDs
+$Script:UserMapping = @{}
 function Get-UserMapping {
     [CmdletBinding()]
     param (
@@ -17,10 +18,6 @@ function Get-UserMapping {
         [Parameter(Mandatory)]
         [System.Security.Principal.SecurityIdentifier]$SID
     )
-
-    if (-not $UserMapping) {
-        $Script:UserMapping = @{}
-    }
 
     if (-not ($UserMapping[$SID.Value])) {
         $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter ('SID="{0}"' -f $SID.Value)
