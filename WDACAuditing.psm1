@@ -592,9 +592,13 @@ Return all kernel mode enforcement events.
                 SigningScenario = $SigningScenarioMapping[$EventData.SISigningScenario]
                 UnresolvedFilePath = $UnresolvedFilePath
                 FilePath = $ResolvedFilePath
-                SHA1FileHash = [BitConverter]::ToString($EventData.SHA1FlatHash).Replace('-','')
+                SHA1FileHash = if ($EventData.SHA1FlatHash) {
+                    [BitConverter]::ToString($EventData.SHA1FlatHash).Replace('-','')
+                } else { $null }
                 SHA1AuthenticodeHash = [BitConverter]::ToString($EventData.SHA1Hash).Replace('-','')
-                SHA256FileHash = [BitConverter]::ToString($EventData.SHA256FlatHash).Replace('-','')
+                SHA256FileHash = if ($EventData.SHA256FlatHash) {
+                    [BitConverter]::ToString($EventData.SHA256FlatHash).Replace('-','')
+                } else { $null }
                 SHA256AuthenticodeHash = [BitConverter]::ToString($EventData.SHA256Hash).Replace('-','')
                 UnresolvedProcessName = $EventData.ProcessName
                 ProcessName = $ResolvedProcessName
