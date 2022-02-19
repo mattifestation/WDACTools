@@ -12,8 +12,6 @@ if ($PartitionMapping.Count -eq 0) {
 # Resolve user names from SIDs
 $Script:UserMapping = @{}
 
-Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
-
 $Script:Providers = @{
     'Microsoft-Windows-AppLocker'     = (Get-WinEvent -ListProvider Microsoft-Windows-AppLocker)
     'Microsoft-Windows-CodeIntegrity' = (Get-WinEvent -ListProvider Microsoft-Windows-CodeIntegrity)
@@ -88,6 +86,22 @@ $Script:VerificationErrorMapping = @{
     [Byte] 26 = 'Explicitly denied by WDAC policy'
     [Byte] 27 = 'The signing chain appears to be tampered/invalid'
     [Byte] 28 = 'Resource page hash mismatch'
+}
+
+function Get-UserMapping {
+    [CmdletBinding()]
+    param (
+        # Security identifier of the account to look up
+        [Parameter(Mandatory)]
+        [System.Security.Principal.SecurityIdentifier]$SID
+    )
+
+    if (-not ($UserMapping[$SID.Value])) {
+        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter ('SID="{0}"' -f $SID.Value)
+        # Revert to the SID if a user name cannot be resolved
+        $UserMapping[$SID.Value] = if ($Account.Caption) {$Account.Caption} else {$SID.Value}
+    }
+    $UserMapping[$SID.Value]
 }
 
 function Get-WDACPolicyRefreshEventFilter {
@@ -249,10 +263,6 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
         8037 = 'Allowed'
     }
 
-    # Resolve user names from SIDs
-    $UserMapping = @{}
-    Get-CimInstance Win32_Account -Property SID, Caption | ForEach-Object { $UserMapping[$_.SID] = $_.Caption }
-
     Get-WinEvent -LogName 'Microsoft-Windows-AppLocker/MSI and Script' -FilterXPath $Filter @MaxEventArg -ErrorAction Ignore | ForEach-Object {
         $ResolvedSigners = $null
         $SigningStatus = $null
@@ -292,10 +302,7 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
 
         $EventData = Get-WinEventData -EventRecord $_
 
-        $UserName = $UserMapping[$_.UserId.Value]
-
-        # Revert to the SID if a user name cannot be resolved
-        if (-not $UserName) { $UserName = $_.UserId }
+        $UserName = Get-UserMapping $_.UserId.Value
 
         $ObjectArgs = [Ordered] @{
             TimeCreated = $_.TimeCreated
@@ -579,10 +586,7 @@ Return all kernel mode enforcement events.
                 Write-Warning "The following process file path was either not resolved properly or was not present on disk: $ResolvedProcessName"
             }
 
-            $UserName = $UserMapping[$_.UserId.Value]
-
-            # Revert to the SID if a user name cannot be resolved
-            if (-not $UserName) { $UserName = $_.UserId }
+            $UserName = Get-UserMapping $_.UserId.Value
 
             $CIEventProperties = [Ordered] @{
                 TimeCreated = $_.TimeCreated
