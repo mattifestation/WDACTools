@@ -15,19 +15,19 @@ function Get-UserMapping {
     param (
         # Security identifier of the account to look up
         [Parameter(Mandatory)]
-        [string]$SID
+        [System.Security.Principal.SecurityIdentifier]$SID
     )
 
     if (-not $UserMapping) {
         $Script:UserMapping = @{}
     }
 
-    if (-not ($UserMapping[$SID])) {
-        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter "SID='$SID'"
+    if (-not ($UserMapping[$SID.Value])) {
+        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter ('SID="{0}"' -f $SID.Value)
         # Revert to the SID if a user name cannot be resolved
-        $UserMapping[$SID] = if ($Account.Caption) {$Account.Caption} else {$SID}
+        $UserMapping[$SID.Value] = if ($Account.Caption) {$Account.Caption} else {$SID.Value}
     }
-    $UserMapping[$SID]
+    $UserMapping[$SID.Value]
 }
 
 $Script:Providers = @{
