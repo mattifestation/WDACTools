@@ -11,21 +11,6 @@ if ($PartitionMapping.Count -eq 0) {
 
 # Resolve user names from SIDs
 $Script:UserMapping = @{}
-function Get-UserMapping {
-    [CmdletBinding()]
-    param (
-        # Security identifier of the account to look up
-        [Parameter(Mandatory)]
-        [System.Security.Principal.SecurityIdentifier]$SID
-    )
-
-    if (-not ($UserMapping[$SID.Value])) {
-        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter ('SID="{0}"' -f $SID.Value)
-        # Revert to the SID if a user name cannot be resolved
-        $UserMapping[$SID.Value] = if ($Account.Caption) {$Account.Caption} else {$SID.Value}
-    }
-    $UserMapping[$SID.Value]
-}
 
 $Script:Providers = @{
     'Microsoft-Windows-AppLocker'     = (Get-WinEvent -ListProvider Microsoft-Windows-AppLocker)
@@ -101,6 +86,22 @@ $Script:VerificationErrorMapping = @{
     [Byte] 26 = 'Explicitly denied by WDAC policy'
     [Byte] 27 = 'The signing chain appears to be tampered/invalid'
     [Byte] 28 = 'Resource page hash mismatch'
+}
+
+function Get-UserMapping {
+    [CmdletBinding()]
+    param (
+        # Security identifier of the account to look up
+        [Parameter(Mandatory)]
+        [System.Security.Principal.SecurityIdentifier]$SID
+    )
+
+    if (-not ($UserMapping[$SID.Value])) {
+        $Account = Get-CimInstance Win32_Account -Property SID, Caption -Filter ('SID="{0}"' -f $SID.Value)
+        # Revert to the SID if a user name cannot be resolved
+        $UserMapping[$SID.Value] = if ($Account.Caption) {$Account.Caption} else {$SID.Value}
+    }
+    $UserMapping[$SID.Value]
 }
 
 function Get-WDACPolicyRefreshEventFilter {
