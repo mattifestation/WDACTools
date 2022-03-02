@@ -288,12 +288,18 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
                     if (-not (($SignerData.PublisherNameLength -eq 0) -and ($SignerData.IssuerNameLength -eq 0) -and ($SignerData.PublisherTBSHashSize -eq 0) -and ($SignerData.IssuerTBSHashSize -eq 0))) {
                         $SigningStatus = 'Signed'
 
+                        $PublisherTBSHash = $null
+                        if ($SignerData.PublisherTBSHash) { $PublisherTBSHash = [BitConverter]::ToString($SignerData.PublisherTBSHash).Replace('-','') }
+
+                        $IssuerTBSHash = $null
+                        if ($SignerData.IssuerTBSHash) { $IssuerTBSHash = [BitConverter]::ToString($SignerData.IssuerTBSHash).Replace('-','') }
+
                         New-Object -TypeName PSObject -Property ([Ordered] @{
                             SignatureIndex = $SignerData.Signature
                             PublisherName = $SignerData.PublisherName
                             IssuerName = $SignerData.IssuerName
-                            PublisherTBSHash = [BitConverter]::ToString($SignerData.PublisherTBSHash).Replace('-','')
-                            IssuerTBSHash = [BitConverter]::ToString($SignerData.IssuerTBSHash).Replace('-','')
+                            PublisherTBSHash = $PublisherTBSHash
+                            IssuerTBSHash = $IssuerTBSHash
                         })
                     }
                 }
@@ -304,15 +310,24 @@ Get-WDACApplockerScriptMsiEvent -SignerInformation
 
         $UserName = Get-UserMapping $_.UserId.Value
 
+        $SHA1FileHash = $null
+        if ($EventData.Sha1Hash) { $SHA1FileHash = [BitConverter]::ToString($EventData.Sha1Hash).Replace('-','') }
+
+        $SHA256FileHash = $null
+        if ($EventData.Sha256CatalogHash) { $SHA256FileHash = [BitConverter]::ToString($EventData.Sha256CatalogHash).Replace('-','') }
+
+        $SHA256AuthenticodeHash = $null
+        if ($EventData.Sha256Hash) { $SHA256AuthenticodeHash = [BitConverter]::ToString($EventData.Sha256Hash).Replace('-','') }
+
         $ObjectArgs = [Ordered] @{
             TimeCreated = $_.TimeCreated
             ProcessID = $_.ProcessId
             User = $UserName
             EventType = $EventIdMapping[$_.Id]
             FilePath = $EventData.FilePath
-            SHA1FileHash = [BitConverter]::ToString($EventData.Sha1Hash).Replace('-','')
-            SHA256FileHash = [BitConverter]::ToString($EventData.Sha256CatalogHash).Replace('-','')
-            SHA256AuthenticodeHash = [BitConverter]::ToString($EventData.Sha256Hash).Replace('-','')
+            SHA1FileHash = $SHA1FileHash
+            SHA256FileHash = $SHA256FileHash
+            SHA256AuthenticodeHash = $SHA256AuthenticodeHash
             UserWriteable = $EventData.UserWriteable
             Signed = $SigningStatus
             SignerInfo = ($ResolvedSigners | Sort-Object -Property SignatureIndex)
@@ -524,7 +539,7 @@ Return all kernel mode enforcement events.
             # Note: there may be more than one correlated signer event in the case of the file having multiple signers.
             $Signer = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -MaxEvents 1 -ErrorAction Ignore
 
-            if ($Signer.Properties[0].Value -gt 1) {
+            if ($Signer -and $Signer.Properties -and ($Signer.Properties[0].Value -gt 1)) {
                 $Signer = Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -FilterXPath "*[System[EventID = 3089 and Correlation[@ActivityID = '$($_.ActivityId.Guid)']]]" -MaxEvents ($Signer.Properties[0].Value) -ErrorAction Ignore
             }
 
@@ -537,9 +552,18 @@ Return all kernel mode enforcement events.
 
                 if ($IgnoreDenyEvents -and ($VerificationError -eq 'Explicitly denied by WDAC policy')) { $ExplicitlyDeniedSigner = $True }
 
+                $Hash = $null
+                if ($SignerData.Hash) { $Hash = [BitConverter]::ToString($SignerData.Hash).Replace('-','') }
+
+                $PublisherTBSHash = $null
+                if ($SignerData.PublisherTBSHash) { $PublisherTBSHash = [BitConverter]::ToString($SignerData.PublisherTBSHash).Replace('-','') }
+
+                $IssuerTBSHash = $null
+                if ($SignerData.IssuerTBSHash) { $IssuerTBSHash = [BitConverter]::ToString($SignerData.IssuerTBSHash).Replace('-','') }
+
                 New-Object -TypeName PSObject -Property ([Ordered] @{
                     SignatureIndex = $SignerData.Signature
-                    Hash = [BitConverter]::ToString($SignerData.Hash).Replace('-','')
+                    Hash = $Hash
                     PageHash = $SignerData.PageHash
                     SignatureType = $SignatureType
                     ValidatedSigningLevel = $SigningLevelMapping[$SignerData.ValidatedSigningLevel]
@@ -550,8 +574,8 @@ Return all kernel mode enforcement events.
                     NotValidAfter = $SignerData.NotValidAfter
                     PublisherName = $SignerData.PublisherName
                     IssuerName = $SignerData.IssuerName
-                    PublisherTBSHash = [BitConverter]::ToString($SignerData.PublisherTBSHash).Replace('-','')
-                    IssuerTBSHash = [BitConverter]::ToString($SignerData.IssuerTBSHash).Replace('-','')
+                    PublisherTBSHash = $PublisherTBSHash
+                    IssuerTBSHash = $IssuerTBSHash
                 })
             }
         }
@@ -588,6 +612,24 @@ Return all kernel mode enforcement events.
 
             $UserName = Get-UserMapping $_.UserId.Value
 
+            $SHA1FileHash = $null
+            if ($EventData.SHA1FlatHash) { $SHA1FileHash = [BitConverter]::ToString($EventData.SHA1FlatHash[0..19]).Replace('-','') }
+
+            $SHA1AuthenticodeHash = $null
+            if ($EventData.SHA1Hash) { $SHA1AuthenticodeHash = [BitConverter]::ToString($EventData.SHA1Hash).Replace('-','') }
+            
+            $SHA256FileHash = $null
+            if ($EventData.SHA256FlatHash) { $SHA256FileHash = [BitConverter]::ToString($EventData.SHA256FlatHash[0..31]).Replace('-','') }
+
+            $SHA256AuthenticodeHash = $null
+            if ($EventData.SHA256Hash) { $SHA256AuthenticodeHash = [BitConverter]::ToString($EventData.SHA256Hash).Replace('-','') }
+
+            $PolicyGuid = $null
+            if ($EventData.PolicyGUID) { $PolicyGuid = $EventData.PolicyGUID.Guid.ToUpper() }
+
+            $PolicyHash = $null
+            if ($EventData.PolicyHash) { $PolicyHash = [BitConverter]::ToString($EventData.PolicyHash).Replace('-','') }
+
             $CIEventProperties = [Ordered] @{
                 TimeCreated = $_.TimeCreated
                 ProcessID = $_.ProcessId
@@ -596,22 +638,18 @@ Return all kernel mode enforcement events.
                 SigningScenario = $SigningScenarioMapping[$EventData.SISigningScenario]
                 UnresolvedFilePath = $UnresolvedFilePath
                 FilePath = $ResolvedFilePath
-                SHA1FileHash = if ($EventData.SHA1FlatHash) {
-                    [BitConverter]::ToString($EventData.SHA1FlatHash).Replace('-','')
-                } else { $null }
-                SHA1AuthenticodeHash = [BitConverter]::ToString($EventData.SHA1Hash).Replace('-','')
-                SHA256FileHash = if ($EventData.SHA256FlatHash) {
-                    [BitConverter]::ToString($EventData.SHA256FlatHash).Replace('-','')
-                } else { $null }
-                SHA256AuthenticodeHash = [BitConverter]::ToString($EventData.SHA256Hash).Replace('-','')
+                SHA1FileHash = $SHA1FileHash
+                SHA1AuthenticodeHash = $SHA1AuthenticodeHash
+                SHA256FileHash = $SHA256FileHash
+                SHA256AuthenticodeHash = $SHA256AuthenticodeHash
                 UnresolvedProcessName = $EventData.ProcessName
                 ProcessName = $ResolvedProcessName
                 RequestedSigningLevel = $SigningLevelMapping[$EventData.RequestedSigningLevel]
                 ValidatedSigningLevel = $SigningLevelMapping[$EventData.ValidatedSigningLevel]
                 PolicyName = $EventData.PolicyName
                 PolicyID = $EventData.PolicyId
-                PolicyGUID = $(if ($EventData.PolicyGUID) { $EventData.PolicyGUID.Guid.ToUpper() } else { $null })
-                PolicyHash = [BitConverter]::ToString($EventData.PolicyHash).Replace('-','')
+                PolicyGUID = $PolicyGuid
+                PolicyHash = $PolicyHash
                 OriginalFileName = $EventData.OriginalFileName
                 InternalName = $EventData.InternalName
                 FileDescription = $EventData.FileDescription
